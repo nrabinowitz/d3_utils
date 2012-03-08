@@ -14,10 +14,122 @@ d3.util = d3.util || {};
  * @param {String|Color} fill       Color under the text
  * @return {String}                 Black or white, in hex
  */
-d3.util.textOnFill=  function(fill) {
+d3.util.textOnFill =  function(fill) {
     fill = d3.rgb(fill);
     var sum = fill.r + fill.g + fill.b;
     return sum/3 < 152 ? '#fff' : '#000';
+};
+
+/**
+ * Decorator: Takes a function and adds the ability to add chainable getter/setters.
+ * @param {Function} f      Function to decorate
+ * @return {Function}       Decorated function
+ */
+d3.util.chainable = function(f) {
+    var options = f.options = {};
+    f.option = function(name, defaultValue) {
+        if (name == 'option' || name == 'options') return;
+        options[name] = defaultValue;
+        f[name] = function(value) {
+            if (!arguments.length) return options[name];
+            options[name] = value;
+            return f;
+        }
+        return f;
+    }
+    return f;
+};
+
+/**
+ * Color legend. Makes a configurable bar with blocks of color and 
+ * optional numbers at both ends and in the middle.
+ */
+d3.util.colorLegend = function() {
+    return d3.util.chainable(function chart(container) {
+        var opts = chart.options;
+        if (!opts.scale || !opts.scale.ticks) return;
+            
+        var vertical = opts.height > opts.width,
+            ticks = opts.scale.ticks(10),
+            length = ticks.length;
+        
+        // legend colors
+        container.selectAll('rect.' + opts.cssClass)
+            .data(ticks)
+          .enter().append('svg:rect')
+            .attr('class', opts.cssClass)
+            .attr('x', vertical ? 0 : function(d,i) { return i * (opts.width / length) })
+            .attr('y', !vertical ? 0 : function(d,i) { return i * (opts.height / length) })
+            .attr('width', vertical ? opts.width : opts.width / length)
+            .attr('height', !vertical ? opts.height : opts.height / length)
+            .style('fill', opts.scale);
+            
+        // legend label setup
+        var domain = opts.scale.domain(),
+            min = domain[0],
+            max = domain[domain.length - 1],
+            labelPos = d3.scale.linear()
+                .domain([min, max])
+                .range([0, vertical ? opts.height : opts.width]),
+            labels = [];
+        if (opts.startLabel) labels.push(min);
+        if (opts.middleLabel) labels.push(max/2);
+        if (opts.endLabel) labels.push(max);
+        
+        // add legend labels
+        container.selectAll('text.' + opts.cssClass)
+            .data(labels)
+          .enter().append('svg:text')
+            .attr('class', opts.cssClass)
+            .attr('x', vertical ? opts.width : labelPos)
+            .attr('y', vertical ? labelPos : opts.height)
+            .attr("dx", vertical ? 5 : 0)
+            .attr("dy", !vertical ? '1em' : function(d) {
+                return !opts.alignLabels ? '.35em' :
+                    d == min ? '.8em' :
+                    d == max ? 0 :
+                    '.35em';
+            })
+            .attr('text-anchor', vertical ? 'start' : function(d) {
+                return !opts.alignLabels ? 'middle' :
+                    d == min ? 'start' :
+                    d == max ? 'end' :
+                    'middle';
+            })
+            .text(opts.format);
+        
+        // hook for additional styling
+        if (opts.labelStyler) {
+            container.selectAll('text.' + opts.cssClass)
+                .call(opts.labelStyler);
+        }
+    })
+    // add options with defaults
+    .option('width', 200)
+    .option('height', 20)
+    .option('scale', null)
+    .option('format', d3.format(','))
+    .option('ticks', 10)
+    .option('startLabel', true)
+    .option('endLabel', true)
+    .option('middleLabel', false)
+    .option('cssClass', 'legend')
+    .option('labelStyler', null)
+    .option('alignLabels', false);
+};
+
+/**
+ * Get a color scale from min/max and an arbitrary number of colors
+ * @param {Number} min      Minimum value
+ * @param {Number} max      Maximum value
+ * @param {Color[]} colors  Range of colors
+ */
+d3.scale.color = function(min, max, colors) {
+    var interval = (max - min)  / (colors.length-1),
+        scale = d3.scale.linear()
+            .domain(colors.map(function(c,i) { return min + i * interval }))
+            .range(colors);
+    return scale;
 };
 
 // Misc common formats, added to d3.format as a convenience
@@ -127,7 +239,10 @@ if (d3.geo) {
         return projection.scale(scale).translate([transX, transY])
     };
     
-    // monkey patch mercator to accept origin()
+    /**
+     * Version of the mercator projection that allows setting the origin.
+     * Works with point data, mixed results with path data.
+     */
     d3.geo.mercator_origin = function() {
       var d3_geo_radians = Math.PI / 180,
           scale = 500,
