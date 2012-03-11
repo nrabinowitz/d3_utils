@@ -22,11 +22,15 @@ d3.util.textOnFill =  function(fill) {
 
 /**
  * Decorator: Takes a function and adds the ability to add chainable getter/setters.
- * @param {Function} f      Function to decorate
- * @return {Function}       Decorated function
+ * @param {Function(selection)} func        Function to decorate
+ * @return {Function(selection, options)}   Decorated function
  */
-d3.util.chainable = function(f) {
-    var options = f.options = {};
+d3.util.component = function(func) {
+    var options = {},
+        f = function(selection) {
+            func(selection, options);
+        };
+    
     f.option = function(name, defaultValue) {
         if (name == 'option' || name == 'options') return;
         options[name] = defaultValue;
@@ -45,13 +49,13 @@ d3.util.chainable = function(f) {
  * optional numbers at both ends and in the middle.
  */
 d3.util.colorLegend = function() {
-    return d3.util.chainable(function chart(container) {
-        var opts = chart.options;
+    return d3.util.component(function(container, opts) {
         if (!opts.scale || !opts.scale.ticks) return;
             
         var vertical = opts.height > opts.width,
-            ticks = opts.scale.ticks(10),
-            length = ticks.length;
+            ticks = opts.scale.ticks(opts.ticks),
+            length = ticks.length,
+            labelStyler = opts.labelStyler || function() {};
         
         // legend colors
         container.selectAll('rect.' + opts.cssClass)
@@ -96,26 +100,78 @@ d3.util.colorLegend = function() {
                     d == max ? 'end' :
                     'middle';
             })
-            .text(opts.format);
-        
-        // hook for additional styling
-        if (opts.labelStyler) {
-            container.selectAll('text.' + opts.cssClass)
-                .call(opts.labelStyler);
-        }
+            .text(opts.format)
+            .call(labelStyler);
     })
     // add options with defaults
     .option('width', 200)
     .option('height', 20)
-    .option('scale', null)
+    .option('scale')
     .option('format', d3.format(','))
     .option('ticks', 10)
     .option('startLabel', true)
     .option('endLabel', true)
-    .option('middleLabel', false)
+    .option('middleLabel')
     .option('cssClass', 'legend')
-    .option('labelStyler', null)
+    .option('labelStyler')
     .option('alignLabels', false);
+};
+
+/**
+ * Size legend. Makes a configurable set of circles with size labels.
+ */
+d3.util.sizeLegend = function() {
+    return d3.util.component(function(container, opts) {
+        if (!opts.scale || !opts.scale.ticks) return;
+            
+        var vertical = opts.vertical && !opts.horizontal,
+            padding = opts.padding || vertical ? 3 : 20,
+            scale = opts.scale,
+            ticks = scale.ticks(opts.ticks);
+        if (!ticks[0]) {
+            ticks = scale.ticks(opts.ticks + 1).slice(1);
+        }
+            
+        var length = ticks.length,
+            maxRadius = scale(ticks[length-1]),
+            offset = Math.max(maxRadius, 15) + padding,
+            circleStyler = opts.circleStyler || function() {},
+            labelStyler = opts.labelStyler || function() {};
+            
+        var legend = container.selectAll('g')
+            .data(ticks)
+          .enter().append("svg:g")
+            .attr('transform', function(d,i) { 
+                var xoff = vertical ? maxRadius : i*offset,
+                    yoff = !vertical ? maxRadius : i*offset;
+                return 'translate(' + xoff + ',' + yoff +')';
+            });
+        
+        legend.append('svg:circle')
+            .attr('cx', maxRadius)
+            .attr('cy', maxRadius/2)
+            .attr('r', scale)
+            .attr('fill', '#ccc')
+            .call(circleStyler);
+        
+        legend.append('svg:text')
+            .attr('x', vertical ? maxRadius * 2 + 5 : maxRadius)
+            .attr('y', !vertical ? maxRadius * 2 : offset/2)
+            .attr('dy', vertical ? 0 : '.8em')
+            .attr('text-anchor', vertical ? 'start' : 'middle')
+            .text(opts.format)
+            .call(labelStyler);
+    })
+    // add options with defaults
+    .option('scale')
+    .option('vertical', true)
+    .option('horizontal')
+    .option('format', d3.format(','))
+    .option('ticks', 3)
+    .option('padding')
+    .option('cssClass', 'legend')
+    .option('circleStyler')
+    .option('labelStyler');
 };
 
 /**
