@@ -1,1 +1,1 @@
-This is a small, ideosyncratic set of utilities for D3.js. Feel free to use them if they're helpful.
+This is a small, idiosyncratic set of utilities for D3.js. Feel free to use them if they're helpful.
